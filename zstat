@@ -1,0 +1,20 @@
+#!/bin/bash
+
+### FIXME: At least allow the -h and -s options
+
+real_zstat=/usr/bin/zstat.zmhm-divert
+
+if [ $# != 0 ]; then
+    (
+	echo "This is not the real zstat program.";
+	echo "The real zstat program is located at $real_zstat,";
+	echo "but it may not work properly with zmhm."
+    ) | fmt >&2
+    exit 1
+fi
+
+$real_zstat -h localhost
+
+# Really, we should query the zmhm for the default server name
+server=${ZEPHYR_SERVER-$(head -1 /etc/zmhm.conf)}
+ZEPHYR_SERVER='.zstat.' $real_zstat -s $server

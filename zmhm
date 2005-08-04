@@ -1,0 +1,169 @@
+#!/usr/bin/perl -w
+
+use strict;
+use IO::Socket::INET;
+use Net::hostent qw(gethost);
+
+# Check for lack of servers immediately
+system("/usr/bin/wc -w /etc/zmhm.conf | /bin/grep '^[1-9]' >/dev/null");
+if ($? != 0) {
+    die "zmhm: No zephyr servers specified in /etc/zmhm.conf, aborting.\n";
+}
+
+exit 0 if fork;
+
+# Save our pid so that /etc/init.d/zmhm stop can kill us
+open PID, ">/var/run/zmhm.pid" or die;
+print PID "$$\n";
+close PID;
+
+# Redirect all output to /var/log/zmhm.log
+open LOG, ">>/var/log/zmhm.log" or open LOG, ">/dev/null" or die;
+select LOG; $| = 1;
+open STDOUT, ">&LOG";
+open STDERR, ">&LOG";
+
+print LOG "$0 starting at ", scalar localtime;
+print LOG "\n";
+
+# Drop privileges
+$< = $> = getpwnam("nobody") if $> == 0;
+$( = $) = getgrnam("nogroup") if $) == 0;
+
+# Read server list
+my @servers;
+my %aliases;
+open CONF, "/etc/zmhm.conf" or die;
+while (<CONF>) {
+    chomp;
+    # Resolve CNAMEs
+    my $hostname = $_;
+    my $host = lc(gethost($hostname)->name);
+    $aliases{$hostname} = $host;
+    push @servers, $host;
+}
+close CONF;
+
+# Try to find our primary network interface through the routing table
+# In principal, we should do this separately for each server
+my $line = `/sbin/route -n | grep ^0.0.0.0`;
+my ($default_iface) = ($line =~ /(\w+)$/);
+$line = `/sbin/ifconfig $default_iface | grep addr`;
+my ($hostname) = ($line =~ /addr:([0-9.]+)/);
+
+sub fake {
+    my $socket = IO::Socket::INET->new(LocalAddr => "$hostname:0",
+				       Proto => "udp")
+	or die;
+    my $hm_socket = IO::Socket::INET->new(LocalAddr => "localhost:0",
+					  Proto => "udp")
+	or die;
+    return ($socket, $hm_socket);
+}
+
+sub get {
+    my $socket = shift;
+    my $buf;
+    my $name = $socket->recv($buf, 4096, 0);
+    my ($port, $addr) = sockaddr_in($name);
+    my $host = lc gethostbyaddr($addr, AF_INET);
+    my $length = length $buf;
+#   print LOG "From $host:$port $length bytes\n";
+    return { buf => $buf, host => $host, port => $port, name => $name };
+}
+
+my $real_hm = IO::Socket::INET->new(LocalAddr => "$hostname:2104",
+				    Proto => "udp")
+    or die;
+
+my $zmhm_status = IO::Socket::INET->new(LocalAddr => "localhost:2104",
+					Proto => "udp")
+    or die;
+
+my @fake_servers;
+my %host_info;
+my %port_info;
+
+for (my $i = 0; $i < @servers; $i++) {
+    my ($socket, $hm_socket) = fake;
+    push @fake_servers, $socket;
+    $host_info{$servers[$i]} = { socket => $socket, hm_socket => $hm_socket, port => $hm_socket->sockport, servport => $socket->sockport };
+    $port_info{$hm_socket->sockport} = { target => $servers[$i] };
+}
+
+for my $alias (keys %aliases) {
+    $host_info{lc $alias} = $host_info{$aliases{$alias}};
+}
+
+# Support for zstat
+# This is for zstat -s, so the choice of hostmanager port is irrelevant
+$host_info{".zstat."} = { port => $host_info{$servers[0]}{port}, servport => 2103 };
+				    
+#open RUN, ">zmhm.run" or die;
+#for my $server (keys %host_info) {
+#    print RUN "$server $host_info{$server}{port} $host_info{$server}{servport}\n";
+#}
+#close RUN;
+
+for my $server (@servers) {
+    my $pid = fork;
+    die if $pid == -1;
+    if ($pid == 0) {		# child
+	open STDIN, "<&", $host_info{$server}{hm_socket};
+	$ENV{ZEPHYR_SERVER} = $server;
+	$ENV{ZEPHYR_LOCAL} = $hostname;
+	$ENV{LD_PRELOAD} = "/usr/lib/libzmhm-gethostbyname.so.1";
+	exec "/usr/sbin/zhm", "-i", $server;
+	die "exec failed";
+    }
+}
+
+$SIG{TERM} = sub { system("killall zhm"); unlink("/var/run/zmhm.pid"); exit 0; };
+
+while (1) {
+    my $rin = '';
+    my $rout;
+    vec($rin, $real_hm->fileno, 1) = 1;
+    vec($rin, $zmhm_status->fileno, 1) = 1;
+    for my $fs (@fake_servers) {
+	vec($rin, $fs->fileno, 1) = 1;
+    }
+    select $rout = $rin, undef, undef, undef;
+    
+    if (vec($rout, $real_hm->fileno, 1)) {
+	my $packet = get $real_hm;
+	next unless exists $host_info{$packet->{host}};
+	my $h = $host_info{$packet->{host}};
+	$h->{socket}->send($packet->{buf}, 0, scalar sockaddr_in($h->{port}, inet_aton("127.0.0.1")));
+#	print LOG "Forwarded to localhost port $h->{port}\n";
+    }
+    if (vec($rout, $zmhm_status->fileno, 1)) {
+	my $packet = get $zmhm_status;
+	chomp $packet->{buf};
+#	print LOG "$packet->{buf}\n";
+	my ($type, $server) = ($packet->{buf} =~ /^ZMHM0.1 query ([^ ]+) ([^ ]+)$/);
+	$server = lc $server;
+	unless (defined $type and defined $server) {
+	    $zmhm_status->send("ZMHM0.1 Go away!", 0, $packet->{name});
+	    next;
+	}
+	my $field;
+	if ($type eq "zephyr-hm") {
+	    $field = "port";
+	} elsif ($type eq "zephyr-clt") {
+	    $field = "servport";
+	}
+	$server = $servers[0] if $server eq ".default.";
+	$zmhm_status->send("ZMHM0.1 $host_info{$server}{$field}\n", 0,
+			   $packet->{name});
+    }
+    for my $fs (@fake_servers) {
+	if (vec($rout, $fs->fileno, 1)) {
+	    my $packet = get $fs;
+	    next unless exists $port_info{$packet->{port}};
+	    my $target = $port_info{$packet->{port}}{target};
+	    $real_hm->send($packet->{buf}, 0, scalar sockaddr_in(2103, inet_aton($target)));
+#	    print LOG "Forwarded to $target\n";
+	}
+    }
+}

@@ -1,0 +1,188 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+
+<head>
+  <title>The Zephyr Multi-Realm Host Manager</title>
+  <meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8" />
+  <meta name="author" content="Project Numenor Webmaster" />
+  <link href="mailto:rwbarton%40numenor.mit.edu" rev="made" />
+  <link rel="stylesheet" href="style.css" type="text/css" />
+</head>
+
+<body>
+
+<h1>The Zephyr Multi-Realm Host Manager</h1>
+
+<ul>
+<li><a href="#purpose">Purpose</a></li>
+<li><a href="#installation">Installation</a></li>
+<li><a href="#usage">Usage</a></li>
+<li><a href="#limitations">Limitations</a></li>
+<li><a href="#implementation">Implementation Details</a></li>
+<li><a href="#bugs">Bugs</a></li>
+</ul>
+
+<h2 id="purpose">Purpose</h2>
+
+<p>The Project Athena Zephyr system uses fixed UDP port numbers for
+communications between servers, host managers, and clients.  As a
+result, it is impossible to run more than one zephyr host manager
+(<tt>zhm</tt>) on a single machine.  With the advent of Project
+Numenor, users wanted to be able to be able to communicate with both
+the Athena and Numenor zephyr servers simultaneously.  This was
+impossible without logging in to multiple machines.  Now, the Zephyr
+multi-realm host manager (<tt>zmhm</tt>) allows you to run multiple
+host managers on the same machine, by modifying the port numbers and
+servers used by <tt>zhm</tt>, and forwarding packets appropriately.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Currently <tt>zmhm</tt> is only available as a Debian package.  You
+can obtain it by adding the line</p>
+
+<pre><b>deb http://numenor.mit.edu/apt stable numenor</b>
+</pre>
+
+<p>to <tt>/etc/apt/sources.list</tt>, then running <tt><b>apt-get
+update; apt-get install zmhm</b></tt>.  Alternatively, you can
+download the latest version as of this writing directly from here:
+<tt><a
+href="http://numenor.mit.edu/apt/dists/sarge/numenor/binary-i386/zmhm_0.1.4_i386.deb">zmhm_0.1.4_i386.deb</a></tt>.
+For non-<tt>i386</tt> architectures, try the source package: <tt><a
+href="http://numenor.mit.edu/apt/dists/sarge/numenor/source/zmhm_0.1.4.tar.gz">zmhm_0.1.4.tar.gz</a></tt>.
+You can try installing manually from that tarball on non-Debian
+machines, too.</p>
+
+<p>During the installation procedure, you will be asked for the zephyr
+servers you wish to use.  List them, separated by spaces, with the
+zephyr server you want to use by default first.  If not installing via
+the Debian package, create a file <tt><a
+href="zmhm.conf">/etc/zmhm.conf</a></tt> with one server on each line,
+default server first.  For example, if you wanted to use the Numenor
+zephyr server by default but also have the Athena server available,
+your file would look like this:</p>
+
+<pre><b>numenor.mit.edu
+z1.mit.edu</b>
+</pre>
+
+<p>Start <tt>zmhm</tt> by running <tt><b>/etc/init.d/zmhm start</b></tt>,
+if necessary.</p>
+
+<h2 id="usage">Usage</h2>
+
+<p>When <tt>zmhm</tt> is installed, your zephyr clients
+(<tt>zwgc</tt>, <tt>zwrite</tt>, or <tt>owl</tt>) are controlled by
+the environment variable <tt>ZEPHYR_SERVER</tt>.  Thus if you want to
+send a zephyr to user <tt>rwbarton</tt> on the Athena zephyr server,
+you might do it like this:</p>
+
+<pre>$ <b>ZEPHYR_SERVER=z1.mit.edu zwrite rwbarton</b>
+zwrite: Don't have Kerberos ticket-granting ticket (get_ad_tkt) while sending notice to rwbarton
+$ <i># Oops, we don't have Athena tickets right now so can't send authentic zephyrs</i>
+$ <b>ZEPHYR_SERVER=z1.mit.edu zwrite -d rwbarton</b>
+Type your message now.  End with control-D or a dot on a line by itself.
+<b>Hi, Reid!</b>
+<b>.</b>
+Message queued for rwbarton... sent
+</pre>
+
+<p>Here you used the <tt>-d</tt> flag to send an unauthentic zephyr,
+because your ticket file probably has your Numenor tickets, not your
+Athena tickets.  (If your machine is primarily set up for Athena
+access, reverse the roles of Numenor and Athena in this example.)  On
+the Numenor system, there is a handy script <tt>athena</tt> that sets
+other environment variables like <tt>KRBTKFILE</tt> to help
+<tt>zwrite</tt> find your Athena tickets.  It also sets
+<tt>ZEPHYR_SERVER</tt> to <tt>z1.mit.edu</tt>, so you can do the
+following:</p>
+
+<pre>$ <b>athena kinit -54</b>
+Password for <i>username</i>@ATHENA.MIT.EDU: <b>********</b>
+$ <b>athena zwrite rwbarton</b>
+Type your message now.  End with control-D or a dot on a line by itself.
+<b>I can send authentic zephyrs now.</b>
+<b>.</b>
+Message queued for rwbarton... sent
+</pre>
+
+<p>As for receiving zephyrs, you should be able to run two
+<tt>zwgc</tt> processes as follows, although this has not been tested:</p>
+
+<pre>$ <b>zwgc -ttymode -subfile ~/.zephyr.subs.numenor</b>
+$ <b>rm /tmp/wg.$UID</b>
+$ <b>athena zwgc -ttymode -subfile ~/.zephyr.subs.athena</b>
+</pre>
+
+<p>If you prefer the <tt>owl</tt> zephyr client, there isn't any run
+file that needs to be deleted, but unfortunately <tt>owl</tt> has no
+analogue of <tt>zwgc</tt>'s <tt>-subfile</tt> option.  A workaround is
+to add subscription commands for Athena to <tt>~/.owlconf.athena</tt>,
+then invoke <tt>owl</tt> as <tt><b>owl -n -c
+~/.owlconf.athena</b></tt>.  (The <tt>-n</tt> option prevents
+<tt>owl</tt> from loading subscriptions from
+<tt>~/.zephyr.subs</tt>.)</p>
+
+<p>The same procedure of setting <tt>ZEPHYR_SERVER</tt> should work
+with all zephyr clients ([<tt>x</tt>]<tt>zwrite</tt>, <tt>zaway</tt>,
+<tt>zleave</tt>, <tt>zlocate</tt>, <tt>znol</tt>) except
+<tt>zaway</tt> and possibly <tt>zctl</tt>; see <a
+href="#lim-zstat">below</a>.</p>
+
+<h2 id="limitations">Limitations</h2>
+
+<ul>
+<li>You can only configure <tt>zmhm</tt> to use one zephyr server per
+realm, so you must choose between <tt>z1.mit.edu</tt>,
+<tt>z2.mit.edu</tt>, and <tt>z3.mit.edu</tt>.  You could list them as
+separate servers in <tt>/etc/zmhm.conf</tt>, but you would have to
+specify which one you want every time you run a zephyr client; you
+can't get <tt>zhm</tt>'s behavior of switching to a new zephyr server
+transparently if the current one is down.</li>
+
+<li id="lim-zstat">A couple zephyr clients like <tt>zstat</tt> and the
+<tt>hm_flush</tt> operation of <tt>zctl</tt> contact the zephyr server
+directly, rather than through the host manager.  These clients need
+special treatment to work under <tt>zmhm</tt>.  A wrapper for
+<tt>zstat</tt> is included with the <tt>zmhm</tt> distribution; it
+behaves correctly according to the value of <tt>ZEPHYR_SERVER</tt>,
+but does not support any of <tt>zstat</tt>'s command-line options.
+The <tt>zctl hm_flush</tt> command is currently unsupported.</li>
+
+<li>The <tt>wg_*</tt> commands of <tt>zctl</tt> presumably use
+<tt>/tmp/wg.$UID</tt> to find <tt>zwgc</tt>.  If you use the method
+above to run two <tt>zwgc</tt> processes, you won't be able to talk to
+both of them.  This isn't a big deal, because the <tt>wg_*</tt>
+operations aren't very useful.</li>
+</ul>
+
+<h2 id="implementation">Implementation Details</h2>
+
+<p>To be written...</p>
+
+<h2 id="bugs">Bugs</h2>
+
+<ul>
+<li><tt>zmhm</tt> acts oddly when <tt>/etc/zmhm.conf</tt> doesn't have
+any servers listed.  Workaround: Don't do that.</li>
+
+<li><tt>zstat</tt> doesn't query <tt>zmhm</tt> for the default server;
+instead it reads the top line of <tt>/etc/zmhm.conf</tt>.  Unlikely to
+cause problems.</li>
+
+<li>When <tt>zmhm</tt> is running on the same machine as
+<tt>zephyrd</tt> the Zephyr server will get confused.  Add
+<tt><b>export ZMHM_DISABLE=1</b></tt> to your
+<tt>/etc/init.d/zephyrd</tt> if this affects you.
+</li>
+</ul>
+
+<p>If you encounter any other bugs in <tt>zmhm</tt>, please contact <a
+href="mailto:rwbarton@numenor.mit.edu">Reid Barton</a>.</p>
+
+<p><small>Last updated August 3, 2005 by <a
+href="mailto:rwbarton@numenor.mit.edu">Reid Barton</a></small></p>
+
+</body>
+
+</html>
