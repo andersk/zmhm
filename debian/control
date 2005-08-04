@@ -1,0 +1,13 @@
+Source: zmhm
+Section: net
+Priority: extra
+Maintainer: Reid W. Barton <numenor-security@mit.edu>
+Build-Depends: cdbs, debhelper
+
+Package: zmhm
+Architecture: any
+Pre-Depends: zephyr-clients, debconf (>= 0.5)
+Depends: ${shlibs:Depends}
+Description: Zephyr Multi-realm Host Manager
+ The Zephyr Multi-realm Host Manager (zmhm) allows your machine
+ to communicate with multiple zephyr servers simultaneously.

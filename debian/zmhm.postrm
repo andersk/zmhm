@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e
+. /usr/share/debconf/confmodule
+
+# Our NSS module is probably gone, so let's kill the nsswitch.conf entry
+perl -i -pne 's/^(services:.*)zmhm */$1/' /etc/nsswitch.conf
+
+if [ "$1" = remove ]; then
+    ldconfig
+fi
+
+if [ "$1" = purge ]; then
+    update-rc.d -f zmhm remove >/dev/null
+    update-rc.d zhm defaults >/dev/null
+    db_purge
+    rm -f /etc/zmhm.conf
+fi
+
+if [ "$1" != purge -a "$1" != upgrade ]; then
+# Don't start zhm on purge, since it was already started on uninstall.
+# Also, we don't start zhm on upgrade.
+    if [ -f /etc/init.d/zhm ]; then
+	invoke-rc.d zhm start || true
+    fi
+fi

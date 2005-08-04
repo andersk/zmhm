@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -e
+. /usr/share/debconf/confmodule
+
+# create /etc/zmhm.conf
+db_get zmhm/servers
+cat </dev/null >/etc/zmhm.conf
+for x in $RET; do
+    echo $x >>/etc/zmhm.conf
+done
+
+db_stop
+
+# add zmhm to /etc/nsswitch.conf
+perl -i -pne 's/^(services:\s*)/${1}zmhm / unless /zmhm/;' /etc/nsswitch.conf
+
+# deal with zstat
+zstat=/usr/bin/zstat
+dpkg-divert --quiet --rename --package zmhm --divert $zstat.zmhm-divert $zstat
+ln -s $zstat.zmhm $zstat
+
+if [ "$1" = configure ]; then
+    ldconfig
+fi
+
+update-rc.d zmhm defaults >/dev/null
+update-rc.d -f zhm remove >/dev/null 2>&1
+
+invoke-rc.d zmhm start

@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# deal with zstat
+zstat=/usr/bin/zstat
+[ "$(readlink $zstat)" = $zstat.zmhm ] && rm -f $zstat
+dpkg-divert --quiet --remove --rename --package zmhm --divert $zstat.zmhm-divert $zstat
+
+if [ -f /etc/init.d/zmhm ]; then
+    invoke-rc.d zmhm stop
+fi

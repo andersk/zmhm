@@ -1,0 +1,8 @@
+#!/usr/bin/make -f
+
+include /usr/share/cdbs/1/rules/debhelper.mk
+include /usr/share/cdbs/1/class/makefile.mk
+
+install/zmhm::
+	install -D zmhm.init $(DEB_DESTDIR)/etc/init.d/zmhm
+	install -D zstat $(DEB_DESTDIR)/usr/bin/zstat.zmhm

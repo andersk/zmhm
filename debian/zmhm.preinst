@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e
+
+if [ $1 != upgrade ]; then
+# Don't bother stopping zhm on upgrade, since we don't start it.
+    invoke-rc.d zhm stop || true
+    sleep 1
+fi

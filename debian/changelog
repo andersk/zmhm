@@ -1,0 +1,33 @@
+zmhm (0.1.4) stable; urgency=low
+
+  * Find machine's network IP address even when its FQDN doesn't resolve.
+    Closes: N#68.
+  * Don't log gratuitously.
+
+ -- Reid W. Barton <numenor-security@mit.edu>  Thu,  4 Aug 2005 13:10:09 -0400
+
+zmhm (0.1.3) stable; urgency=low
+
+  * Upgrades from this and future versions should be fixed now.
+
+ -- Reid W. Barton <numenor-security@mit.edu>  Thu,  4 Aug 2005 02:10:07 -0400
+
+zmhm (0.1.2) stable; urgency=low
+
+  * Abort immediately if no zephyr servers are configured.  Closes: N#24.
+  * Disable libnss_zmhm lookup for /usr/sbin/zephyrd.  Closes: N#57.
+  * Include some HTML documentation.  Closes: N#58.
+
+ -- Reid W. Barton <numenor-security@mit.edu>  Thu,  4 Aug 2005 01:27:24 -0400
+
+zmhm (0.1.1) stable; urgency=low
+
+  * First not obviously broken version.
+
+ -- Reid W. Barton <numenor-security@mit.edu>  Mon, 25 Jul 2005 23:23:09 -0400
+
+zmhm (0.1.0) stable; urgency=low
+
+  * Initial release of zmhm package.
+
+ -- Reid W. Barton <numenor-security@mit.edu>  Mon, 25 Jul 2005 18:34:29 -0400

@@ -1,0 +1,8 @@
+Template: zmhm/servers
+Type: string
+Description: What are your zephyr servers?
+ Please enter the zephyr servers you wish to use,
+ separated by spaces.  You can only enter one zephyr
+ server per realm, so you must choose between z1.mit.edu,
+ z2.mit.edu, and z3.mit.edu, for example.  The first server
+ in the list will be used as the default.

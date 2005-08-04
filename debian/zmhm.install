@@ -1,0 +1,3 @@
+libnss_zmhm.so.2 lib
+libzmhm-gethostbyname.so.1 usr/lib
+zmhm usr/sbin
